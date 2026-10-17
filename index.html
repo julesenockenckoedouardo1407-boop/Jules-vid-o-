@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>FaceSwap Vidéo</title>
+<style>
+:root{--bg:#0f1115;--card:#1a1d24;--line:#2a2f3a;--txt:#eef0f4;--mut:#9aa3b2;--acc:#6c8cff;--acc2:#8b5cf6;--ok:#34d399;--bad:#f87171}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+[hidden]{display:none!important}
+main{max-width:560px;margin:0 auto;padding:max(16px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom))}
+h1{font-size:28px;margin:28px 0 6px}
+h2{font-size:18px;margin:0}
+.sub{color:var(--mut);margin:0 0 28px}
+.note{color:var(--mut);font-size:13px;line-height:1.5}
+button,.btn{font:inherit;color:var(--txt);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;cursor:pointer;text-align:center;display:inline-flex;align-items:center;justify-content:center;gap:8px;user-select:none}
+button:active,.btn:active{transform:scale(.98)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.big{width:100%;padding:20px 16px;font-size:18px;font-weight:600;margin:0 0 14px;background:linear-gradient(135deg,var(--acc),var(--acc2));border:0;color:#fff;text-decoration:none}
+.big:disabled{background:var(--card);color:var(--mut);border:1px solid var(--line)}
+.ghost{background:transparent;border:1px solid var(--line)}
+.bar{display:flex;align-items:center;gap:12px;margin:6px 0 14px}
+.row{display:flex;gap:10px;align-items:center;margin:0 0 12px}
+.row .btn{flex:1;padding:12px 8px;font-size:15px}
+.row .btn.sm{flex:0 0 52px}
+.stage{position:relative;background:#000;border-radius:14px;overflow:hidden;border:1px solid var(--line);display:flex;justify-content:center;align-items:center;min-height:200px;margin:0 0 12px}
+#cv{display:block;max-width:100%;max-height:58vh;width:auto;height:auto;touch-action:none}
+#empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--mut);padding:20px;text-align:center}
+.ctl{display:grid;gap:10px;margin:0 0 10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.ctl label{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--mut)}
+.ctl label span{min-width:96px}
+input[type=range]{flex:1;accent-color:var(--acc);min-width:0}
+.hint{font-size:13px;color:var(--mut);line-height:1.5;margin:4px 2px 12px}
+.consent{display:flex;gap:10px;align-items:flex-start;font-size:14px;line-height:1.45;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:0 0 14px}
+.consent input{margin-top:3px;width:20px;height:20px;flex:0 0 auto;accent-color:var(--acc)}
+#prog{height:10px;background:var(--card);border-radius:8px;overflow:hidden;margin:0 0 8px;border:1px solid var(--line)}
+#bar{height:100%;width:0;background:linear-gradient(90deg,var(--acc),var(--acc2));transition:width .2s}
+#status{font-size:14px;color:var(--mut);min-height:20px;margin:0 0 8px}
+#status.err{color:var(--bad)}
+#out{width:100%;border-radius:14px;background:#000;max-height:60vh;margin:0 0 14px}
+.hid{position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0;pointer-events:none}
+#time{font-size:13px;color:var(--mut);min-width:44px;text-align:right}
+#play{padding:10px 14px;min-width:48px}
+</style>
+</head>
+<body>
+<main>
+
+<section id="home">
+  <h1>FaceSwap Vidéo</h1>
+  <p class="sub">Modifiez de courtes vidéos (30 secondes max) directement sur votre téléphone.</p>
+  <button class="big" data-mode="replace">🙂 Remplacer un visage</button>
+  <button class="big" data-mode="insert">➕ Insérer une personne</button>
+  <p class="note">Vos vidéos et vos photos restent sur votre appareil : rien n'est envoyé ni publié. Chaque vidéo exportée porte la mention « Modifié par IA ».</p>
+  <button id="installBtn" class="ghost" hidden>📲 Installer l'application</button>
+</section>
+
+<section id="editor" hidden>
+  <div class="bar"><button id="back" class="ghost" aria-label="Retour">←</button><h2 id="title"></h2></div>
+
+  <div class="row">
+    <label class="btn">1. Vidéo<input id="fv" type="file" accept="video/*" hidden></label>
+    <label class="btn">2. Photo<input id="fp" type="file" accept="image/*" hidden></label>
+    <label class="btn sm" title="Prendre une photo">📷<input id="fc" type="file" accept="image/*" capture="user" hidden></label>
+  </div>
+
+  <div class="stage">
+    <canvas id="cv" width="360" height="640"></canvas>
+    <div id="empty">Choisissez d'abord une vidéo</div>
+  </div>
+
+  <div class="row">
+    <button id="play" aria-label="Lecture">▶</button>
+    <input id="seek" type="range" min="0" max="1" step="0.01" value="0">
+    <span id="time">0:00</span>
+  </div>
+
+  <div class="ctl">
+    <label><span id="sizeLbl">Taille</span><input id="size" type="range" min="5" max="100" value="30"></label>
+    <label id="rotw"><span>Rotation</span><input id="rot" type="range" min="-180" max="180" value="0"></label>
+    <label id="ovalw"><input id="oval" type="checkbox"><span style="min-width:0">Découpe ovale (pour un visage)</span></label>
+  </div>
+  <p id="hint" class="hint"></p>
+
+  <label class="consent">
+    <input id="consent" type="checkbox">
+    <span>Je confirme que j'ai l'accord des personnes concernées. Je n'utiliserai pas cette vidéo pour usurper une identité, tromper ou nuire, ni avec des personnalités publiques.</span>
+  </label>
+
+  <button id="export" class="big" disabled>Exporter la vidéo</button>
+  <div id="prog" hidden><div id="bar"></div></div>
+  <p id="status"></p>
+</section>
+
+<section id="result" hidden>
+  <div class="bar"><h2>Votre vidéo est prête</h2></div>
+  <video id="out" controls playsinline></video>
+  <a id="dl" class="big btn">⬇ Enregistrer la vidéo</a>
+  <button id="share" class="big" hidden>↗ Partager</button>
+  <button id="again" class="ghost" style="width:100%">Nouveau projet</button>
+</section>
+
+</main>
+
+<video id="vid" class="hid" playsinline muted preload="auto"></video>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const MAXDUR = 30;
+const vid = $('#vid'), cv = $('#cv'), ctx = cv.getContext('2d');
+const seekEl = $('#seek');
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+const S = {
+  screen: 'home', mode: null, hasV: false, hasP: false, img: null,
+  ov: { cx: .5, cy: .5, w: .3, rot: 0, oval: false },
+  k: 2.2,
+  detector: null, detOK: false, detState: 'idle',
+  faces: [], lastBox: null, target: null, miss: 0, frame: 0,
+  exporting: false, expDur: MAXDUR, finish: null,
+  videoURL: null, outURL: null, outFile: null, maskCache: null, seeking: false
+};
+
+const status = (t, err) => { const el = $('#status'); el.textContent = t || ''; el.className = err ? 'err' : ''; };
+const show = n => { S.screen = n; ['home', 'editor', 'result'].forEach(s => $('#' + s).hidden = s !== n); window.scrollTo(0, 0); };
+const isManual = () => S.mode === 'insert' || !S.detOK;
+const fmt = t => { t = Math.max(0, t | 0); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
+
+/* ---------- Écrans ---------- */
+document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => startFlow(b.dataset.mode)));
+
+function startFlow(mode) {
+  resetProject();
+  S.mode = mode;
+  $('#title').textContent = mode === 'replace' ? 'Remplacer un visage' : 'Insérer une personne';
+  if (mode === 'replace' && S.detState === 'failed') S.detState = 'idle';
+  show('editor');
+  applyControls();
+  if (mode === 'replace') initDetector();
+}
+
+function resetProject() {
+  try { vid.pause(); } catch (e) {}
+  if (S.videoURL) { URL.revokeObjectURL(S.videoURL); S.videoURL = null; }
+  vid.removeAttribute('src'); vid.load();
+  S.hasV = false; S.hasP = false; S.img = null; S.maskCache = null;
+  S.ov = { cx: .5, cy: .5, w: .3, rot: 0, oval: false };
+  S.k = 2.2; S.faces = []; S.lastBox = null; S.target = null; S.miss = 0; S.exporting = false;
+  ['fv', 'fp', 'fc'].forEach(id => $('#' + id).value = '');
+  $('#consent').checked = false; $('#oval').checked = false; $('#rot').value = 0;
+  $('#empty').hidden = false; $('#prog').hidden = true; $('#bar').style.width = '0';
+  status('');
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  refreshExport();
+}
+
+$('#back').addEventListener('click', () => {
+  if (S.exporting) return;
+  try { vid.pause(); } catch (e) {}
+  show('home');
+});
+
+function applyControls() {
+  const size = $('#size');
+  const manual = isManual();
+  if (manual) {
+    $('#sizeLbl').textContent = 'Taille';
+    size.min = 5; size.max = 100; size.value = Math.round(S.ov.w * 100);
+  } else {
+    $('#sizeLbl').textContent = 'Taille du visage';
+    size.min = 100; size.max = 400; size.value = Math.round(S.k * 100);
+  }
+  $('#rotw').hidden = !manual;
+  $('#ovalw').hidden = S.mode === 'replace';
+  if (S.mode === 'replace') S.ov.oval = true;
+  let h = '';
+  if (S.mode === 'insert') {
+    h = 'Glissez la personne pour la placer, pincez à deux doigts ou utilisez le curseur pour la taille. Une photo PNG détourée (fond transparent) donne le meilleur résultat.';
+  } else if (S.detState === 'loading' || S.detState === 'idle') {
+    h = 'Chargement de la détection de visages… (connexion nécessaire la première fois)';
+  } else if (S.detOK) {
+    h = 'Touchez un visage dans la vidéo pour le choisir. Utilisez une photo de visage de face, bien cadrée, et réglez la taille.';
+  } else {
+    h = 'Détection automatique indisponible (vérifiez votre connexion). Mode manuel : glissez la photo sur le visage.';
+  }
+  $('#hint').textContent = h;
+}
+
+/* ---------- Détection de visages (MediaPipe, chargé à la demande) ---------- */
+async function initDetector() {
+  if (S.detState === 'loading' || S.detState === 'ready') { applyControls(); return; }
+  S.detState = 'loading'; applyControls();
+  try {
+    const V = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+    const mod = await import(V + '/vision_bundle.mjs');
+    const fs = await mod.FilesetResolver.forVisionTasks(V + '/wasm');
+    const model = 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite';
+    const make = d => mod.FaceDetector.createFromOptions(fs, {
+      baseOptions: { modelAssetPath: model, delegate: d },
+      runningMode: 'VIDEO', minDetectionConfidence: 0.5
+    });
+    try { S.detector = await make('GPU'); } catch (e) { S.detector = await make('CPU'); }
+    S.detOK = true; S.detState = 'ready';
+  } catch (e) {
+    console.warn('Détection indisponible', e);
+    S.detOK = false; S.detState = 'failed';
+  }
+  applyControls();
+}
+
+const dist = (a, b) => Math.hypot(a.cx - b.cx, a.cy - b.cy);
+function lostFace() { S.miss++; if (S.miss > 12) S.lastBox = null; if (S.miss > 40) S.target = null; }
+
+function runDetect() {
+  if (!S.detector || vid.readyState < 2) return;
+  let res;
+  try { res = S.detector.detectForVideo(vid, performance.now()); } catch (e) { return; }
+  const sx = cv.width / vid.videoWidth, sy = cv.height / vid.videoHeight;
+  const faces = (res.detections || []).map(d => {
+    const b = d.boundingBox;
+    return { cx: (b.originX + b.width / 2) * sx, cy: (b.originY + b.height / 2) * sy, w: b.width * sx, h: b.height * sy };
+  });
+  S.faces = faces;
+  if (!faces.length) { lostFace(); return; }
+  let pick;
+  if (S.target) {
+    pick = faces.reduce((a, f) => dist(f, S.target) < dist(a, S.target) ? f : a);
+    if (dist(pick, S.target) > cv.width * 0.35) { lostFace(); return; }
+  } else {
+    pick = faces.reduce((a, f) => f.w > a.w ? f : a);
+  }
+  S.miss = 0;
+  const p = S.lastBox;
+  S.lastBox = p ? { cx: p.cx + (pick.cx - p.cx) * .7, cy: p.cy + (pick.cy - p.cy) * .7, w: p.w + (pick.w - p.w) * .6, h: pick.h } : pick;
+  S.target = { cx: S.lastBox.cx, cy: S.lastBox.cy };
+}
+
+/* ---------- Dessin ---------- */
+function maskedCanvas(img, w, h) {
+  const k = w + 'x' + h;
+  if (S.maskCache && S.maskCache.k === k) return S.maskCache.c;
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d');
+  x.drawImage(img, 0, 0, w, h);
+  x.globalCompositeOperation = 'destination-in';
+  x.save(); x.translate(w / 2, h / 2); x.scale(w / 2, h / 2);
+  const g = x.createRadialGradient(0, 0, 0, 0, 0, 1);
+  g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(.7, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  x.fillStyle = g; x.beginPath(); x.arc(0, 0, 1, 0, Math.PI * 2); x.fill(); x.restore();
+  S.maskCache = { k, c };
+  return c;
+}
+
+function drawOverlay(cx, cy, wpx, rot, oval) {
+  const img = S.img;
+  const hpx = wpx * img.naturalHeight / img.naturalWidth;
+  if (wpx < 2 || hpx < 2) return;
+  ctx.save();
+  ctx.translate(cx, cy); ctx.rotate(rot * Math.PI / 180);
+  if (oval) ctx.drawImage(maskedCanvas(img, Math.max(2, Math.round(wpx / 4) * 4), Math.max(2, Math.round(hpx / 4) * 4)), -wpx / 2, -hpx / 2, wpx, hpx);
+  else ctx.drawImage(img, -wpx / 2, -hpx / 2, wpx, hpx);
+  ctx.restore();
+}
+
+function drawMark(w, h) {
+  const t = 'Modifié par IA';
+  const fs = Math.max(12, Math.round(w * .032));
+  ctx.save();
+  ctx.font = '600 ' + fs + 'px system-ui,sans-serif';
+  const tw = ctx.measureText(t).width, pad = fs * .55;
+  const bw = tw + pad * 2, bh = fs * 1.7;
+  const x = w - bw - fs * .6, y = h - bh - fs * .6;
+  ctx.fillStyle = 'rgba(0,0,0,.5)';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, bw, bh, fs * .4); else ctx.rect(x, y, bw, bh);
+  ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle';
+  ctx.fillText(t, x + pad, y + bh / 2);
+  ctx.restore();
+}
+
+function render() {
+  const w = cv.width, h = cv.height;
+  ctx.drawImage(vid, 0, 0, w, h);
+  if (S.mode === 'replace' && S.detOK) {
+    if (S.exporting || (S.frame++ % 2 === 0)) runDetect();
+    if (S.img && S.lastBox) {
+      const b = S.lastBox;
+      drawOverlay(b.cx, b.cy - b.w * .05, b.w * S.k, 0, true);
+    }
+    if (!S.exporting) {
+      ctx.save(); ctx.lineWidth = Math.max(2, w * .004);
+      S.faces.forEach(f => {
+        const chosen = S.lastBox && dist(f, S.lastBox) < f.w * .6;
+        ctx.strokeStyle = chosen ? '#34d399' : 'rgba(255,255,255,.55)';
+        ctx.setLineDash(chosen ? [] : [6, 6]);
+        ctx.strokeRect(f.cx - f.w / 2, f.cy - f.h / 2, f.w, f.h);
+      });
+      ctx.restore();
+    }
+  } else if (S.img) {
+    const o = S.ov;
+    drawOverlay(o.cx * w, o.cy * h, o.w * w, o.rot, S.mode === 'replace' ? true : o.oval);
+  }
+  drawMark(w, h);
+}
+
+function loop() {
+  if (S.screen === 'editor' && S.hasV && vid.readyState >= 2) {
+    if (!S.exporting && vid.currentTime > +seekEl.max) { vid.pause(); vid.currentTime = 0; }
+    render();
+    if (!S.seeking) seekEl.value = vid.currentTime;
+    $('#time').textContent = fmt(vid.currentTime);
+    $('#play').textContent = vid.paused ? '▶' : '⏸';
+    if (S.exporting) {
+      const p = clamp(vid.currentTime / S.expDur, 0, 1);
+      $('#bar').style.width = (p * 100).toFixed(1) + '%';
+      status('Traitement… ' + Math.round(p * 100) + ' %  — gardez cet écran ouvert.');
+      if (vid.currentTime >= S.expDur - 0.04 && S.finish) S.finish();
+    }
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ---------- Fichiers ---------- */
+$('#fv').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadVideo(f); });
+['fp', 'fc'].forEach(id => $('#' + id).addEventListener('change', e => { const f = e.target.files[0]; if (f) loadPhoto(f); }));
+
+function loadVideo(f) {
+  if (S.exporting) return;
+  if (S.videoURL) URL.revokeObjectURL(S.videoURL);
+  S.hasV = false; refreshExport();
+  S.videoURL = URL.createObjectURL(f);
+  vid.onloadedmetadata = () => {
+    const vw = vid.videoWidth, vh = vid.videoHeight;
+    if (!vw || !vh) { status('Impossible de lire cette vidéo.', true); return; }
+    const sc = Math.min(1, 960 / Math.max(vw, vh));
+    cv.width = Math.max(2, Math.round(vw * sc / 2) * 2);
+    cv.height = Math.max(2, Math.round(vh * sc / 2) * 2);
+    const dur = isFinite(vid.duration) ? vid.duration : MAXDUR;
+    seekEl.max = Math.min(dur, MAXDUR);
+    S.hasV = true; S.lastBox = null; S.target = null; S.miss = 0; S.faces = [];
+    $('#empty').hidden = true;
+    vid.currentTime = 0.01;
+    status(dur > MAXDUR + 0.5 ? 'Vidéo longue : seules les 30 premières secondes seront traitées.' : '');
+    refreshExport();
+  };
+  vid.onerror = () => status('Impossible de lire cette vidéo. Essayez un fichier MP4.', true);
+  vid.src = S.videoURL; vid.load();
+}
+
+function loadPhoto(f) {
+  const u = URL.createObjectURL(f);
+  const im = new Image();
+  im.onload = () => { S.img = im; S.hasP = true; S.maskCache = null; URL.revokeObjectURL(u); refreshExport(); };
+  im.onerror = () => { URL.revokeObjectURL(u); status('Impossible de lire cette photo.', true); };
+  im.src = u;
+}
+
+/* ---------- Contrôles ---------- */
+$('#play').addEventListener('click', () => {
+  if (!S.hasV || S.exporting) return;
+  if (vid.paused) { if (vid.currentTime >= +seekEl.max - .05) vid.currentTime = 0; vid.play().catch(() => {}); }
+  else vid.pause();
+});
+seekEl.addEventListener('input', () => { if (S.exporting) return; S.seeking = true; vid.currentTime = +seekEl.value; });
+seekEl.addEventListener('change', () => { S.seeking = false; });
+$('#size').addEventListener('input', e => {
+  const v = +e.target.value;
+  if (isManual()) S.ov.w = v / 100; else S.k = v / 100;
+});
+$('#rot').addEventListener('input', e => { S.ov.rot = +e.target.value; });
+$('#oval').addEventListener('change', e => { S.ov.oval = e.target.checked; });
+$('#consent').addEventListener('change', refreshExport);
+
+const ptrs = new Map(); let moved = false, pinch0 = 0, w0 = 0, downPos = null;
+const cpos = e => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * cv.width / r.width, y: (e.clientY - r.top) * cv.height / r.height }; };
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  const p = cpos(e); ptrs.set(e.pointerId, p); downPos = p; moved = false;
+  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); w0 = S.ov.w; }
+});
+cv.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId) || S.exporting) return;
+  const p = cpos(e), prev = ptrs.get(e.pointerId);
+  ptrs.set(e.pointerId, p);
+  if (!isManual() || !S.img) return;
+  if (ptrs.size === 1) {
+    S.ov.cx = clamp(S.ov.cx + (p.x - prev.x) / cv.width, -.2, 1.2);
+    S.ov.cy = clamp(S.ov.cy + (p.y - prev.y) / cv.height, -.2, 1.2);
+    moved = true;
+  } else if (ptrs.size === 2 && pinch0 > 0) {
+    const [a, b] = [...ptrs.values()];
+    S.ov.w = clamp(w0 * Math.hypot(a.x - b.x, a.y - b.y) / pinch0, .05, 1);
+    $('#size').value = Math.round(S.ov.w * 100);
+    moved = true;
+  }
+});
+const endPtr = e => {
+  ptrs.delete(e.pointerId);
+  if (e.type === 'pointerup' && S.mode === 'replace' && S.detOK && !moved && ptrs.size === 0 && downPos && !S.exporting) {
+    S.target = { cx: downPos.x, cy: downPos.y }; S.miss = 0; S.lastBox = null; runDetect();
+  }
+};
+cv.addEventListener('pointerup', endPtr);
+cv.addEventListener('pointercancel', endPtr);
+
+function refreshExport() {
+  $('#export').disabled = !(S.hasV && S.hasP && $('#consent').checked) || S.exporting;
+}
+
+/* ---------- Export ---------- */
+let actx = null, adest = null;
+function audioTrack() {
+  try {
+    if (!actx) {
+      actx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = actx.createMediaElementSource(vid);
+      adest = actx.createMediaStreamDestination();
+      src.connect(adest);
+    }
+    if (actx.state === 'suspended') actx.resume();
+    return adest.stream.getAudioTracks()[0] || null;
+  } catch (e) { return null; }
+}
+
+const seekTo = t => new Promise(r => {
+  if (Math.abs(vid.currentTime - t) < 0.02) return r();
+  const f = () => { vid.removeEventListener('seeked', f); r(); };
+  vid.addEventListener('seeked', f); vid.currentTime = t;
+});
+
+$('#export').addEventListener('click', doExport);
+
+async function doExport() {
+  if (S.exporting || !S.hasV || !S.hasP || !$('#consent').checked) return;
+  if (typeof MediaRecorder === 'undefined' || !cv.captureStream) {
+    status("L'export n'est pas pris en charge par ce navigateur. Utilisez Chrome.", true); return;
+  }
+  const types = ['video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+  const mime = types.find(t => MediaRecorder.isTypeSupported(t)) || '';
+
+  vid.pause();
+  S.exporting = true; refreshExport();
+  $('#prog').hidden = false; $('#bar').style.width = '0';
+  status('Préparation…');
+  await seekTo(0);
+  S.expDur = Math.min(isFinite(vid.duration) ? vid.duration : MAXDUR, MAXDUR);
+  S.lastBox = null; S.miss = 0;
+
+  const stream = cv.captureStream(30);
+  const at = audioTrack();
+  if (at) stream.addTrack(at);
+  vid.muted = !at;
+
+  const chunks = [];
+  let rec;
+  try { rec = new MediaRecorder(stream, { mimeType: mime || undefined, videoBitsPerSecond: 5e6 }); }
+  catch (e) { try { rec = new MediaRecorder(stream); } catch (e2) { S.exporting = false; refreshExport(); status("Enregistrement impossible sur cet appareil.", true); return; } }
+  rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  const done = new Promise(r => { rec.onstop = r; });
+
+  let wl = null;
+  try { if (navigator.wakeLock) wl = await navigator.wakeLock.request('screen'); } catch (e) {}
+
+  S.finish = () => {
+    if (!S.exporting) return;
+    S.exporting = false; S.finish = null;
+    vid.pause();
+    try { rec.stop(); } catch (e) {}
+  };
+  vid.onended = () => { if (S.finish) S.finish(); };
+
+  rec.start(250);
+  try { await vid.play(); }
+  catch (e) {
+    S.exporting = false; S.finish = null;
+    try { rec.stop(); } catch (e2) {}
+    refreshExport(); status('Lecture impossible. Réessayez.', true);
+    if (wl) try { wl.release(); } catch (e3) {}
+    return;
+  }
+
+  await done;
+  vid.onended = null;
+  if (wl) try { wl.release(); } catch (e) {}
+  refreshExport();
+
+  const type = (rec.mimeType || mime || 'video/webm').split(';')[0];
+  const ext = type.includes('mp4') ? 'mp4' : 'webm';
+  if (!chunks.length) { status("L'export a échoué (vidéo vide). Réessayez.", true); return; }
+  const blob = new Blob(chunks, { type });
+  if (S.outURL) URL.revokeObjectURL(S.outURL);
+  S.outURL = URL.createObjectURL(blob);
+  S.outFile = new File([blob], 'faceswap-video.' + ext, { type });
+
+  $('#out').src = S.outURL;
+  $('#dl').href = S.outURL; $('#dl').download = 'faceswap-video.' + ext;
+  $('#share').hidden = !(navigator.canShare && navigator.canShare({ files: [S.outFile] }));
+  vid.muted = true;
+  status('');
+  show('result');
+}
+
+$('#share').addEventListener('click', async () => {
+  try { await navigator.share({ files: [S.outFile], title: 'Vidéo modifiée par IA' }); } catch (e) {}
+});
+$('#again').addEventListener('click', () => {
+  try { $('#out').pause(); } catch (e) {}
+  show('home');
+});
+
+/* ---------- PWA ---------- */
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+let deferred = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; $('#installBtn').hidden = false; });
+$('#installBtn').addEventListener('click', async () => {
+  if (!deferred) return;
+  deferred.prompt(); try { await deferred.userChoice; } catch (e) {}
+  deferred = null; $('#installBtn').hidden = true;
+});
+})();
+</script>
+</body>
+</html>
